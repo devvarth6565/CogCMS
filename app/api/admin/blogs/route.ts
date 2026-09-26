@@ -9,13 +9,17 @@ import { renderBlogSnapshot } from '@/lib/render/blog';
 import { invalidateRelatedPosts } from '@/lib/blog-content/related-index';
 import { notifySiteWebhook } from '@/lib/webhook';
 import { assertBlogAuthorIsUsable } from '@/lib/admin/blog-author';
+import { listBlogsPage } from '@/lib/admin/blog-list';
+import { parseBlogListQuery } from '@/lib/validation/blog-list';
 
 export const dynamic = 'force-dynamic';
 
-export const GET = withAdmin(async (_req, { site }) => {
+export const GET = withAdmin(async (req, { site }) => {
+  const parsed = parseBlogListQuery(req.nextUrl.searchParams);
+  if (!parsed.success) throw validationError(parsed.error, 'Invalid blog list query');
+
   await connectToDatabase();
-  const blogs = await Blog.find({ siteId: site.id }).sort({ createdAt: -1, _id: -1 }).exec();
-  return NextResponse.json(blogs);
+  return NextResponse.json(await listBlogsPage(site.id, parsed.data));
 });
 
 export const POST = withAdmin(async (req, { user, site }) => {

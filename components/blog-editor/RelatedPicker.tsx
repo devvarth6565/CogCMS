@@ -15,15 +15,33 @@ export default function RelatedPicker({
 }) {
   const [blogs, setBlogs] = useState<BlogOpt[]>([]);
   const [q, setQ] = useState('');
+  const [titles, setTitles] = useState<Record<string, string>>({});
+  // Search on the server (the list endpoint is paginated), after typing pauses.
   useEffect(() => {
-    fetch('/api/admin/blogs')
-      .then((r) => r.json())
-      .then((d) => Array.isArray(d) && setBlogs(d.map((b: any) => ({ slug: b.slug, title: b.title }))))
-      .catch(() => {});
-  }, []);
+    const search = q.trim();
+    if (!search) {
+      setBlogs([]);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      const params = new URLSearchParams({ search: search.slice(0, 100), limit: '10' });
+      fetch(`/api/admin/blogs?${params}`, { signal: controller.signal })
+        .then((r) => r.json())
+        .then((d) => {
+          if (Array.isArray(d?.data)) {
+            setBlogs(d.data.map((b: BlogOpt) => ({ slug: b.slug, title: b.title })));
+          }
+        })
+        .catch(() => {});
+    }, 250);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [q]);
   const matches = blogs
     .filter((b) => b.slug !== currentSlug && !value.includes(b.slug))
-    .filter((b) => b.title.toLowerCase().includes(q.toLowerCase()))
     .slice(0, 6);
   return (
     <div className="flex flex-col gap-2">
@@ -32,7 +50,7 @@ export default function RelatedPicker({
       </label>
       {value.map((slug) => (
         <div key={slug} className="flex items-center justify-between px-3 py-1.5 rounded-md bg-gray-50 text-sm">
-          <span>{blogs.find((b) => b.slug === slug)?.title ?? slug}</span>
+          <span>{titles[slug] ?? slug}</span>
           <button type="button" onClick={() => onChange(value.filter((s) => s !== slug))}
             className="text-xs text-red-500">×</button>
         </div>
@@ -43,7 +61,7 @@ export default function RelatedPicker({
         <div className="border rounded-md" style={{ borderColor: 'rgba(0,0,0,0.08)' }}>
           {matches.map((b) => (
             <button key={b.slug} type="button"
-              onClick={() => { onChange([...value, b.slug]); setQ(''); }}
+              onClick={() => { setTitles((t) => ({ ...t, [b.slug]: b.title })); onChange([...value, b.slug]); setQ(''); }}
               className="block w-full text-left px-3 py-1.5 text-sm hover:bg-orange-50">{b.title}</button>
           ))}
         </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import { useSite } from '@/components/admin/site-provider';
@@ -15,36 +15,98 @@ interface Blog {
   createdAt: string;
 }
 
+interface ListMeta {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+type StatusFilter = 'all' | 'draft' | 'publish';
+
+const PAGE_SIZE = 20;
+const SEARCH_DEBOUNCE_MS = 300;
+
+function isListResponse(value: unknown): value is { data: Blog[]; meta: ListMeta } {
+  if (typeof value !== 'object' || value === null) return false;
+  const { data, meta } = value as { data?: unknown; meta?: Partial<ListMeta> };
+  return (
+    Array.isArray(data) &&
+    typeof meta === 'object' &&
+    meta !== null &&
+    typeof meta.page === 'number' &&
+    typeof meta.total === 'number' &&
+    typeof meta.totalPages === 'number'
+  );
+}
+
 export default function AdminBlogsList() {
   const site = useSite();
+  const siteId = site?.id ?? null;
   const [blogs, setBlogs] = useState<Blog[]>([]);
+  const [meta, setMeta] = useState<ListMeta | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
-  const [attempt, setAttempt] = useState(0);
+  const [reloadKey, setReloadKey] = useState(0);
   const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState('all');
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState<StatusFilter>('all');
+  const [page, setPage] = useState(1);
   const [blogToDelete, setBlogToDelete] = useState<Blog | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
   const [notice, setNotice] = useState('');
+  const latestRequest = useRef(0);
+
+  // Wait for typing to pause before asking the server, and start again from page 1.
+  useEffect(() => {
+    const next = query.trim();
+    if (next === search) return;
+    const timer = setTimeout(() => {
+      setSearch(next);
+      setPage(1);
+    }, SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [query, search]);
+
+  // A different site is a different list: start it from the first page.
+  useEffect(() => {
+    setPage(1);
+    setNotice('');
+  }, [siteId]);
 
   useEffect(() => {
+    const requestId = ++latestRequest.current;
     const controller = new AbortController();
+    const params = new URLSearchParams({
+      page: String(page),
+      limit: String(PAGE_SIZE),
+      status: filter,
+    });
+    if (search) params.set('search', search);
     setState('loading');
-    fetch('/api/admin/blogs', { cache: 'no-store', signal: controller.signal })
+    fetch(`/api/admin/blogs?${params}`, { cache: 'no-store', signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error('Unable to load blogs');
-        const data: unknown = await response.json();
-        if (!Array.isArray(data)) throw new Error('Invalid blog list');
-        if (!controller.signal.aborted) {
-          setBlogs(data);
-          setState('ready');
+        const body: unknown = await response.json();
+        if (!isListResponse(body)) throw new Error('Invalid blog list');
+        // Aborting covers most superseded requests; the id check also catches a
+        // response that finished just before the abort landed.
+        if (controller.signal.aborted || requestId !== latestRequest.current) return;
+        // The page emptied under us (for example after deleting its last post): step
+        // back to the last page that still has results.
+        if (body.data.length === 0 && body.meta.totalPages > 0 && page > body.meta.totalPages) {
+          setPage(body.meta.totalPages);
+          return;
         }
+        setBlogs(body.data);
+        setMeta(body.meta);
+        setState('ready');
       })
       .catch(() => {
-        if (!controller.signal.aborted) setState('error');
+        if (!controller.signal.aborted && requestId === latestRequest.current) setState('error');
       });
     return () => controller.abort();
-  }, [attempt]);
+  }, [siteId, search, filter, page, reloadKey]);
 
   async function confirmDelete() {
     if (!blogToDelete || deleting) return;
@@ -56,9 +118,9 @@ export default function AdminBlogsList() {
         headers: { 'Content-Type': 'application/json' },
       });
       if (!response.ok) throw new Error('Delete failed');
-      setBlogs((current) => current.filter((blog) => blog._id !== blogToDelete._id));
       setNotice(`“${blogToDelete.title}” was deleted.`);
       setBlogToDelete(null);
+      setReloadKey((value) => value + 1);
     } catch {
       setDeleteError('The post could not be deleted. It is still in your list. Try again.');
     } finally {
@@ -66,12 +128,12 @@ export default function AdminBlogsList() {
     }
   }
 
-  const search = query.trim().toLocaleLowerCase();
-  const visible = blogs.filter(
-    (blog) =>
-      (filter === 'all' || blog.status === filter) &&
-      `${blog.title} ${blog.slug} ${blog.tag ?? ''}`.toLocaleLowerCase().includes(search),
-  );
+  const filtersActive = search !== '' || filter !== 'all';
+  const total = meta?.total ?? 0;
+  const totalPages = meta?.totalPages ?? 0;
+  const firstShown = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+  const lastShown = Math.min(page * PAGE_SIZE, total);
+  const firstLoad = state === 'loading' && meta === null;
 
   return (
     <section className="mx-auto max-w-6xl px-5 py-10 sm:px-8 sm:py-14">
@@ -104,7 +166,10 @@ export default function AdminBlogsList() {
           Status filter
           <select
             value={filter}
-            onChange={(event) => setFilter(event.target.value)}
+            onChange={(event) => {
+              setFilter(event.target.value as StatusFilter);
+              setPage(1);
+            }}
             className="mt-2 block w-full rounded-lg border border-stone-300 bg-white px-3 py-2.5 sm:w-44"
           >
             <option value="all">All statuses</option>
@@ -114,11 +179,19 @@ export default function AdminBlogsList() {
         </label>
       </div>
       <p role="status" className="my-4 text-sm text-stone-600">
-        {state === 'ready' ? `${visible.length} of ${blogs.length} posts` : ''}
+        {state === 'ready' && meta
+          ? total === 0
+            ? 'No posts'
+            : `Showing ${firstShown}–${lastShown} of ${total} ${total === 1 ? 'post' : 'posts'}`
+          : ''}
+        {state === 'loading' && meta ? 'Updating…' : ''}
         {notice ? ` · ${notice}` : ''}
       </p>
-      <div className="overflow-hidden rounded-xl border border-stone-200 bg-white">
-        {state === 'loading' ? (
+      <div
+        aria-busy={state === 'loading'}
+        className={`overflow-hidden rounded-xl border border-stone-200 bg-white transition-opacity ${state === 'loading' && meta ? 'opacity-60' : ''}`}
+      >
+        {firstLoad ? (
           <div role="status" className="space-y-4 p-6">
             <p className="text-sm text-stone-600">Loading blogs…</p>
             {[1, 2, 3].map((row) => (
@@ -134,29 +207,31 @@ export default function AdminBlogsList() {
             </p>
             <button
               type="button"
-              onClick={() => setAttempt((value) => value + 1)}
+              onClick={() => setReloadKey((value) => value + 1)}
               className="mt-4 rounded-lg border border-stone-300 px-4 py-2 text-sm font-medium hover:bg-stone-50"
             >
               Try again
             </button>
           </div>
         ) : null}
-        {state === 'ready' && visible.length === 0 ? (
+        {state === 'ready' && blogs.length === 0 ? (
           <div className="p-8 text-center">
             <h2 className="font-semibold">
-              {blogs.length === 0 ? 'Write your first article' : 'No posts match your filters'}
+              {filtersActive ? 'No posts match your filters' : 'Write your first article'}
             </h2>
             <p className="mt-2 text-sm text-stone-600">
-              {blogs.length === 0
-                ? 'Create a blog, save it as a draft and publish when it is ready.'
-                : 'Try another title or clear the search and status filter.'}
+              {filtersActive
+                ? 'Try another title or clear the search and status filter.'
+                : 'Create a blog, save it as a draft and publish when it is ready.'}
             </p>
-            {blogs.length > 0 ? (
+            {filtersActive ? (
               <button
                 type="button"
                 onClick={() => {
                   setQuery('');
+                  setSearch('');
                   setFilter('all');
+                  setPage(1);
                 }}
                 className="mt-4 text-sm font-semibold text-orange-800 underline"
               >
@@ -172,8 +247,8 @@ export default function AdminBlogsList() {
             )}
           </div>
         ) : null}
-        {state === 'ready'
-          ? visible.map((blog) => (
+        {state === 'ready' || (state === 'loading' && meta)
+          ? blogs.map((blog) => (
               <div
                 key={blog._id}
                 className="flex flex-col gap-4 border-b border-stone-100 p-5 last:border-0 hover:bg-stone-50/70 sm:flex-row sm:items-center sm:justify-between"
@@ -233,6 +308,29 @@ export default function AdminBlogsList() {
             ))
           : null}
       </div>
+      {meta && totalPages > 1 && state !== 'error' ? (
+        <nav aria-label="Blog list pages" className="mt-4 flex items-center justify-between gap-4">
+          <button
+            type="button"
+            onClick={() => setPage((value) => Math.max(1, value - 1))}
+            disabled={page <= 1 || state === 'loading'}
+            className="rounded-lg border border-stone-300 px-4 py-2 text-sm font-medium hover:bg-stone-50 disabled:opacity-50"
+          >
+            Previous
+          </button>
+          <p className="text-sm text-stone-600">
+            Page {page} of {totalPages}
+          </p>
+          <button
+            type="button"
+            onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
+            disabled={page >= totalPages || state === 'loading'}
+            className="rounded-lg border border-stone-300 px-4 py-2 text-sm font-medium hover:bg-stone-50 disabled:opacity-50"
+          >
+            Next
+          </button>
+        </nav>
+      ) : null}
       <AlertDialog.Root
         open={Boolean(blogToDelete)}
         onOpenChange={(open) => {
