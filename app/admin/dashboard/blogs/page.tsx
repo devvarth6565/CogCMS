@@ -69,9 +69,12 @@ export default function AdminBlogsList() {
   }, [query, search]);
 
   // A different site is a different list: start it from the first page.
+  // Clearing the rows also stops the old site's posts showing while the new ones load.
   useEffect(() => {
     setPage(1);
     setNotice('');
+    setBlogs([]);
+    setMeta(null);
   }, [siteId]);
 
   useEffect(() => {
@@ -94,8 +97,8 @@ export default function AdminBlogsList() {
         if (controller.signal.aborted || requestId !== latestRequest.current) return;
         // The page emptied under us (for example after deleting its last post): step
         // back to the last page that still has results.
-        if (body.data.length === 0 && body.meta.totalPages > 0 && page > body.meta.totalPages) {
-          setPage(body.meta.totalPages);
+        if (body.data.length === 0 && page > 1 && page > body.meta.totalPages) {
+          setPage(Math.max(1, body.meta.totalPages));
           return;
         }
         setBlogs(body.data);
@@ -131,8 +134,10 @@ export default function AdminBlogsList() {
   const filtersActive = search !== '' || filter !== 'all';
   const total = meta?.total ?? 0;
   const totalPages = meta?.totalPages ?? 0;
-  const firstShown = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
-  const lastShown = Math.min(page * PAGE_SIZE, total);
+  // Describe the rows on screen, which may lag `page` while the next page loads.
+  const shownPage = meta?.page ?? page;
+  const firstShown = total === 0 ? 0 : (shownPage - 1) * PAGE_SIZE + 1;
+  const lastShown = Math.min(shownPage * PAGE_SIZE, total);
   const firstLoad = state === 'loading' && meta === null;
 
   return (
@@ -156,6 +161,7 @@ export default function AdminBlogsList() {
           Search blogs
           <input
             type="search"
+            maxLength={100}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search title, slug or tag"
@@ -319,7 +325,7 @@ export default function AdminBlogsList() {
             Previous
           </button>
           <p className="text-sm text-stone-600">
-            Page {page} of {totalPages}
+            Page {shownPage} of {totalPages}
           </p>
           <button
             type="button"
