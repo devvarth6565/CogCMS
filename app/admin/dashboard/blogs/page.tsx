@@ -92,8 +92,8 @@ export default function AdminBlogsList() {
         if (!response.ok) throw new Error('Unable to load blogs');
         const body: unknown = await response.json();
         if (!isListResponse(body)) throw new Error('Invalid blog list');
-        // Aborting covers most superseded requests; the id check also catches a
-        // response that finished just before the abort landed.
+        // A newer request aborts this one in the effect cleanup. The id check is a
+        // second guard, so only the newest request can update the list.
         if (controller.signal.aborted || requestId !== latestRequest.current) return;
         // The page emptied under us (for example after deleting its last post): step
         // back to the last page that still has results.

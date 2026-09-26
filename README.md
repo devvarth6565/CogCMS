@@ -76,8 +76,8 @@ sequenceDiagram
 - **Two queries in parallel over one `$facet` aggregation.** `find` plus `countDocuments` inside `Promise.all` is simple, uses the model's projection and sort directly, and is easy to read in review. A `$facet` would get both results from one consistent read. The trade-off: a post created between the two queries could make `total` off by one for that single response.
 - **Strict integer parsing.** `Number('1e3')` is 1000 and `Number(' 2')` is 2. Only plain digits are accepted, so the server never answers a different question from the one asked. The offset is checked with `Number.isSafeInteger` so a huge `page` cannot overflow.
 - **Rejecting repeated parameters.** `?page=1&page=2` returns 400 rather than quietly using one of the values.
-- **New index `{ siteId: 1, createdAt: -1, _id: -1 }`.** It matches the default ("all statuses") sort exactly, so MongoDB can walk the index instead of sorting in memory. The existing `{ siteId, status, createdAt }` index still serves status-filtered lists.
-- **Stale responses in the UI.** Every fetch has an `AbortController`, and its cleanup aborts the previous request when `search`, `status`, `page` or the site changes. A request id in a `ref` also drops any response that finished just before its abort landed. Search is debounced (300 ms). Changing the search or status resets to page 1.
+- **New index `{ siteId: 1, createdAt: -1, _id: -1 }`.** It matches the default ("all statuses") sort exactly, so MongoDB can walk the index instead of sorting in memory. Status-filtered lists use the existing `{ siteId, status, createdAt }` index to find matching posts; because that index has no `_id`, the tie-break is then sorted in memory, which is cheap at one site's volume.
+- **Stale responses in the UI.** Every fetch has an `AbortController`, and its cleanup aborts the previous request when `search`, `status`, `page` or the site changes. A request id in a `ref` is a second guard, so only the newest request can update the list. Search is debounced (300 ms). Changing the search or status resets to page 1.
 - **Delete recovery.** After a successful delete, the current query is fetched again. If that page is now empty (for example, you deleted the only post on the last page), the UI moves to the new last page. A failed delete leaves the row in place and shows the error in the dialog.
 
 ### Technology choices
@@ -91,7 +91,7 @@ No new dependencies were added.
 
 ### Setup and usage
 
-Nothing new to configure. On an existing database, run `npm run ensure:indexes` once so the new list-order index is created. Then open **Blogs** in the admin panel: type in the search box, pick a status and use **Previous** and **Next**. The count line reads, for example, "Showing 21–40 of 48 posts".
+Nothing new to configure. On an existing database, run `npm run ensure:indexes` once so the new list-order index is created. Then open **Blogs** in the admin panel: type in the search box, pick a status and use **Previous** and **Next**. With the demo seed, page 2 of Northstar Studio reads "Showing 21–30 of 30 posts".
 
 Tests: `lib/validation/blog-list.test.ts` and `lib/admin/blog-list.test.ts` (unit), and `tests/integration/api/admin-blog-list.test.ts`. The integration file covers input boundaries, literal search, status filters, tie ordering, empty and out-of-range pages, omitted body fields, and two-site isolation of rows and counts.
 
@@ -101,6 +101,7 @@ Tests: `lib/validation/blog-list.test.ts` and `lib/admin/blog-list.test.ts` (uni
 - Offset pagination slows down on very deep pages and can shift if posts are created while you page. A cursor mode (`after=<createdAt,_id>`) could be offered next to page numbers.
 - The page number and filters are not in the URL, so refresh and back/forward return to page 1.
 - The related-posts picker shows the slug, not the title, for posts that were pinned before the editor was opened.
+- With no working site selected, the Blogs page shows the generic "could not be loaded" error instead of asking you to choose a site. The starting commit behaves the same way.
 
 ## Checks
 
