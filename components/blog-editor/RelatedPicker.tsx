@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 
 type BlogOpt = { slug: string; title: string };
 
+const MAX_SUGGESTIONS = 6;
+
 export default function RelatedPicker({
   value,
   currentSlug,
@@ -24,11 +26,14 @@ export default function RelatedPicker({
       return;
     }
     const controller = new AbortController();
+    // This post and the pinned ones are filtered out below, so ask for enough rows to still fill the list.
+    const limit = Math.min(100, MAX_SUGGESTIONS + value.length + 1);
     const timer = setTimeout(() => {
-      const params = new URLSearchParams({ search: search.slice(0, 100), limit: '10' });
+      const params = new URLSearchParams({ search: search.slice(0, 100), limit: String(limit) });
       fetch(`/api/admin/blogs?${params}`, { signal: controller.signal })
         .then((r) => r.json())
         .then((d) => {
+          if (controller.signal.aborted) return;
           if (Array.isArray(d?.data)) {
             setBlogs(d.data.map((b: BlogOpt) => ({ slug: b.slug, title: b.title })));
           }
@@ -39,10 +44,10 @@ export default function RelatedPicker({
       clearTimeout(timer);
       controller.abort();
     };
-  }, [q]);
+  }, [q, value.length]);
   const matches = blogs
     .filter((b) => b.slug !== currentSlug && !value.includes(b.slug))
-    .slice(0, 6);
+    .slice(0, MAX_SUGGESTIONS);
   return (
     <div className="flex flex-col gap-2">
       <label className="text-[12px] uppercase tracking-wider text-gray-400" style={{ fontWeight: 600 }}>
