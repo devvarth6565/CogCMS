@@ -45,6 +45,7 @@ describe('model registry and indexes', () => {
         { siteId: 1 },
         { siteId: 1, slug: 1 },
         { siteId: 1, status: 1, createdAt: -1 },
+        { siteId: 1, createdAt: -1, _id: -1 },
       ]),
     );
     expect(

@@ -37,8 +37,9 @@ describe('tenant-safe blog admin API', () => {
       siteId: siteA._id.toString(),
     });
     const listed = await (await listBlogs(list, rootContext)).json();
-    expect(listed).toHaveLength(1);
-    expect(listed[0].title).toContain(siteA.slug);
+    expect(listed.data).toHaveLength(1);
+    expect(listed.data[0].title).toContain(siteA.slug);
+    expect(listed.meta.total).toBe(1);
 
     await Blog.deleteOne({ siteId: siteA._id, slug: 'shared' });
     const crossSite = await authenticatedRequest('http://localhost:3003/api/admin/blogs/shared', {

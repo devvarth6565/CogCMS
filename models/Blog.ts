@@ -93,6 +93,8 @@ BlogSchema.pre('validate', function setFirstPublishedAt() {
 });
 BlogSchema.index({ siteId: 1, slug: 1 }, { unique: true });
 BlogSchema.index({ siteId: 1, status: 1, createdAt: -1 });
+// Serves the admin list's default "all statuses" order without an in-memory sort.
+BlogSchema.index({ siteId: 1, createdAt: -1, _id: -1 });
 
 const Blog: Model<IBlog> = mongoose.models.Blog || mongoose.model<IBlog>('Blog', BlogSchema);
 

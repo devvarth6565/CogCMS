@@ -4,6 +4,6 @@ The Next.js application serves the admin UI, authenticated admin API, and versio
 
 Blogs are rendered and sanitized on save; published snapshots are returned through `/api/v1`. The public website owns its design and routes. The admin editor preview is approximate. Media upload is optional and disabled when S3 configuration is absent.
 
-`GET /api/admin/blogs` currently fetches every full blog for the active site. The Blogs page then searches and filters that array in the browser. Server-side pagination is an improvement opportunity described in the optional [assignment](../ASSIGNMENT.md).
+`GET /api/admin/blogs` searches, filters and paginates on the server. It returns only list fields (`_id`, `title`, `slug`, `status`, `tag`, `createdAt`) for the active site, together with page metadata; see [Server-side blog list](../README.md#server-side-blog-list).
 
 Optional publishing and media integrations support installations beyond the local demo. Deployment tools require explicit operator targets. The legacy website importer is an optional adapter for a specific source schema, not a universal importer. Private installation records and company content are excluded from the public distribution.
