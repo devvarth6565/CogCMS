@@ -131,12 +131,12 @@ function providerError(status: number, body: ChatCompletion | null, headers: Hea
   }
   if (code === 404) {
     return aiUnavailable(
-      'No AI model is available for OPENROUTER_MODELS under the OpenRouter account’s privacy settings.',
+      'No AI model is available under the OpenRouter account’s settings. An administrator can check its privacy settings and OPENROUTER_MODELS.',
     );
   }
   if (code === 400) {
     return aiUnavailable(
-      'The AI provider rejected the request. Ask an administrator to check OPENROUTER_MODELS.',
+      'The AI provider rejected the request. Try again; if it keeps failing, an administrator can find the reason in the server log.',
     );
   }
   if (code === 408) {
@@ -161,6 +161,7 @@ type ProviderReply = { response: Response; body: ChatCompletion | null };
 async function complete(
   apiKey: string,
   models: string[],
+  reasoningOff: boolean,
   request: StructuredOutputRequest,
   signal: AbortSignal,
 ): Promise<ProviderReply> {
@@ -182,10 +183,9 @@ async function complete(
           type: 'json_schema',
           json_schema: { name: request.name, strict: true, schema: request.schema },
         },
-        // Short suggestions need no deliberate reasoning. Free models that reason by default
-        // then answer in seconds instead of half a minute. A model that must reason can reject
-        // this, which OpenRouter treats like any error: it moves to the next model.
-        reasoning: { enabled: false },
+        // Short suggestions need no deliberate reasoning: free models that reason by default
+        // then answer in seconds instead of half a minute.
+        ...(reasoningOff ? { reasoning: { enabled: false } } : {}),
         // Repairs near-miss JSON (code fences, trailing commas) from models without a strict mode.
         plugins: [{ id: 'response-healing' }],
       }),
@@ -204,10 +204,10 @@ async function complete(
   }
 }
 
-const isRetiredModel = ({ response, body }: ProviderReply) =>
+const rejectedFor = ({ response, body }: ProviderReply, reason: RegExp) =>
   response.status === 400 &&
   typeof body?.error?.message === 'string' &&
-  /not a valid model/i.test(body.error.message);
+  reason.test(body.error.message);
 
 /** One chat completion constrained to a JSON Schema. The key never leaves the server. */
 export async function requestStructuredOutput(
@@ -215,15 +215,26 @@ export async function requestStructuredOutput(
   request: StructuredOutputRequest,
   signal?: AbortSignal,
 ): Promise<StructuredOutput> {
-  // One deadline covers the whole call, including a retry.
+  // One deadline covers the whole call, including the retries below.
   const timeout = AbortSignal.timeout(AI_REQUEST_TIMEOUT_MS);
   const deadline = signal ? AbortSignal.any([signal, timeout]) : timeout;
-  let reply = await complete(config.apiKey, config.models, request, deadline);
-  if (config.retiredModelFallback && isRetiredModel(reply)) {
+  let models = config.models;
+  let reasoningOff = true;
+  const send = () => complete(config.apiKey, models, reasoningOff, request, deadline);
+
+  let reply = await send();
+  if (config.retiredModelFallback && rejectedFor(reply, /not a valid model/i)) {
     console.warn(
       `[cms] A built-in AI model was retired; using ${config.retiredModelFallback}. Set OPENROUTER_MODELS to choose models.`,
     );
-    reply = await complete(config.apiKey, [config.retiredModelFallback], request, deadline);
+    models = [config.retiredModelFallback];
+    reply = await send();
+  }
+  // An endpoint that must reason rejects "reasoning off" outright; OpenRouter does not fall
+  // back to the next model for this, so ask again and let it reason.
+  if (rejectedFor(reply, /reasoning is mandatory/i)) {
+    reasoningOff = false;
+    reply = await send();
   }
 
   const { response, body } = reply;

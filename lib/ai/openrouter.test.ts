@@ -159,7 +159,40 @@ describe('requestStructuredOutput', () => {
     );
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(error).toMatchObject({ status: 502, code: 'AI_UNAVAILABLE' });
-    expect(error.message).toMatch(/OPENROUTER_MODELS/);
+    expect(error.message).toMatch(/rejected the request/);
+  });
+
+  it('asks again with reasoning allowed when an endpoint must reason', async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        providerFailure(400, 'Reasoning is mandatory for this endpoint and cannot be disabled.'),
+      )
+      .mockResolvedValueOnce(completion('{"titles":["A"]}'));
+    const result = await requestStructuredOutput(config, request);
+
+    expect(result.data).toEqual({ titles: ['A'] });
+    const bodies = fetchMock.mock.calls.map(([, init]) => JSON.parse(String(init?.body)));
+    expect(bodies[0].reasoning).toEqual({ enabled: false });
+    expect(bodies[1]).not.toHaveProperty('reasoning');
+    expect(bodies[1].models).toEqual(config.models);
+  });
+
+  it('handles a retired built-in model and then an endpoint that must reason', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    fetchMock
+      .mockResolvedValueOnce(providerFailure(400, 'vendor/primary:free is not a valid model ID'))
+      .mockResolvedValueOnce(
+        providerFailure(400, 'Reasoning is mandatory for this endpoint and cannot be disabled.'),
+      )
+      .mockResolvedValueOnce(completion('{"titles":["A"]}'));
+    await requestStructuredOutput({ ...config, retiredModelFallback: FREE_ROUTER_MODEL }, request);
+
+    const bodies = fetchMock.mock.calls.map(([, init]) => JSON.parse(String(init?.body)));
+    expect(bodies.map((body) => [body.models, body.reasoning ?? null])).toEqual([
+      [config.models, { enabled: false }],
+      [[FREE_ROUTER_MODEL], { enabled: false }],
+      [[FREE_ROUTER_MODEL], null],
+    ]);
   });
 
   it('maps rate limits to 429 with the provider Retry-After', async () => {
@@ -186,7 +219,7 @@ describe('requestStructuredOutput', () => {
     [402, 502, /no credits/],
     [403, 502, /declined/],
     [404, 502, /privacy settings/],
-    [400, 502, /OPENROUTER_MODELS/],
+    [400, 502, /rejected the request/],
     [408, 504, /in time/],
     [500, 502, /unavailable/],
     [503, 502, /unavailable/],
