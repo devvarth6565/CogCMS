@@ -28,6 +28,12 @@ To reset, stop the app and verify that the target is your disposable local `cms_
 
 Run `npm run typecheck`, `npm test`, and `npm run build` sequentially. Unit and integration tests use a separate temporary MongoDB replica set. If its binary is not cached, `mongodb-memory-server` may download one. Report any setup or baseline failure separately from your changes.
 
+## AI writing assistant (optional)
+
+The blog editor's **AI assist** button opens a panel with an **AI-readiness score** and suggestions for **titles**, **meta descriptions** and **FAQs**. The score (0–100, with a checklist of fixes) measures how easily answer engines such as ChatGPT, Perplexity and Google AI Overviews can understand, quote and cite a post. It is calculated in the browser as you write and needs no key.
+
+Suggestions come from [OpenRouter](https://openrouter.ai). To turn them on, create a free key at [openrouter.ai/keys](https://openrouter.ai/keys), set `OPENROUTER_API_KEY` in `.env` and restart `npm run dev`. By default it tries two free models that tested well, then OpenRouter's free router; set `OPENROUTER_MODELS` to choose your own. Free models are shared and best-effort, so answers usually take 2–30 seconds and sometimes need a retry. Editors review every suggestion and apply it with one click; nothing is saved until they save the post. Generating sends the draft to OpenRouter and the model's provider, so read the privacy notes before using it with confidential drafts. See [AI writing assistant](docs/AI_ASSISTANT.md) for the design, the scoring checks, the API and limitations.
+
 ## Boundaries
 
 - Admin routes use a login session and active-site selection. `/api/v1` uses site-scoped keys and exposes published content only.
