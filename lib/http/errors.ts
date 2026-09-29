@@ -11,6 +11,8 @@ export type ErrorCode =
   | 'NO_SITE_SELECTED'
   | 'SITE_FORBIDDEN'
   | 'RATE_LIMITED'
+  | 'AI_NOT_CONFIGURED'
+  | 'AI_UNAVAILABLE'
   | 'INTERNAL_ERROR';
 
 export type ErrorBody = { error: string; code: ErrorCode; details: unknown };
@@ -38,6 +40,11 @@ export const rateLimited = (retryAfter: number) =>
 export const notFound = (what = 'Resource') => new HttpError(404, 'NOT_FOUND', `${what} not found`);
 export const validationError = (details: unknown, message = 'Invalid payload') =>
   new HttpError(400, 'VALIDATION_ERROR', message, details);
+export const aiNotConfigured = () =>
+  new HttpError(503, 'AI_NOT_CONFIGURED', 'AI suggestions are not configured on this installation');
+/** The AI provider failed; never forwards the provider's own status (a 401 would end the session). */
+export const aiUnavailable = (message: string, status: 502 | 504 = 502) =>
+  new HttpError(status, 'AI_UNAVAILABLE', message);
 
 type MongoDuplicateKey = { code: 11000; keyPattern?: Record<string, unknown> };
 

@@ -36,6 +36,12 @@ Use narrowly scoped credentials from an instance/task role or the local AWS cred
 
 Check signing, browser upload, completion, public image delivery and rejection of invalid/oversized/cross-site uploads on the actual installation. Add any other image origins your content uses explicitly in `next.config.ts`; no private legacy image hosts are bundled.
 
+## Optional AI assistant
+
+Leave `OPENROUTER_API_KEY` unset to turn off AI suggestions in the blog editor; the AI-readiness score still works. To enable them, create a dedicated OpenRouter key for this installation, store it in your secret configuration, and set a credit limit on the key if it can reach paid models. `OPENROUTER_MODELS` takes up to three model ids, tried in order; by default two tested free models are tried before OpenRouter's free router. Free models are best-effort and allow a limited number of requests per minute and per day for the whole OpenRouter account. For dependable latency, configure a small paid model.
+
+Generating a suggestion sends the draft's title, subtitle, text, tags and keywords to OpenRouter and the selected model's provider. Free endpoints may retain prompts or train on them. Before editors use the assistant with confidential drafts, choose a model and account privacy settings whose providers meet your data-retention requirements. See [AI writing assistant](AI_ASSISTANT.md).
+
 ## Backups, upgrades and rollback
 
 Back up the MongoDB database and retain required media versions according to your recovery needs. Test restoration into a separate database before relying on a backup. Protect environment configuration in your secret manager.

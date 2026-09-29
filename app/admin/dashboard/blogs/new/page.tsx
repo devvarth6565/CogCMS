@@ -14,6 +14,7 @@ import FaqRepeater from '@/components/blog-editor/FaqRepeater';
 import TakeawaysRepeater from '@/components/blog-editor/TakeawaysRepeater';
 import RelatedPicker from '@/components/blog-editor/RelatedPicker';
 import TocEditor, { type TocOverride } from '@/components/blog-editor/TocEditor';
+import AiAssistant, { type AiAssistantPatch } from '@/components/blog-editor/ai/AiAssistant';
 import { slugify } from '@/lib/blog-content/slugify';
 import GraphicEditorModal from '@/components/blog-editor/graphics/GraphicEditorModal';
 import { decodeConfig } from '@/lib/blog-content/graphics/encode';
@@ -451,6 +452,7 @@ function EditorForm() {
   const [error, setError] = useState<string | null>(null);
   const [isSeoOpen, setIsSeoOpen] = useState(false);
   const [isStructuredOpen, setIsStructuredOpen] = useState(false);
+  const [isAiOpen, setIsAiOpen] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showInsertMenu, setShowInsertMenu] = useState(false);
   const [graphicModal, setGraphicModal] = useState<{
@@ -587,6 +589,18 @@ function EditorForm() {
       title: val,
       ...(!slugManuallyEdited ? { slug } : {}),
     });
+  };
+
+  // A suggested title updates an auto-generated slug exactly as typing one does.
+  const handleAiChange = (patch: AiAssistantPatch) => {
+    setFormData((prev) => ({
+      ...prev,
+      ...patch,
+      ...(patch.title !== undefined && !slugManuallyEdited ? { slug: slugify(patch.title) } : {}),
+    }));
+    // Open the collapsed section that changed so the edit is visible.
+    if (patch.metaTitle !== undefined || patch.metaDescription !== undefined) setIsSeoOpen(true);
+    if (patch.faqs !== undefined) setIsStructuredOpen(true);
   };
 
   // Title → Excerpt with Tab key
@@ -925,7 +939,10 @@ function EditorForm() {
   ];
 
   return (
-    <div className="min-h-screen bg-white text-[#1a1a1a]">
+    // On wide screens, make room for the AI assistant instead of covering the text.
+    <div
+      className={`min-h-screen bg-white text-[#1a1a1a] transition-[padding] duration-200 ${isAiOpen ? 'xl:pr-[380px]' : ''}`}
+    >
       {/* Hidden file inputs */}
       <input
         type="file"
@@ -1007,6 +1024,14 @@ function EditorForm() {
               </>
             )}
           </div>
+
+          <AiAssistant
+            post={formData}
+            content={content}
+            onChange={handleAiChange}
+            open={isAiOpen}
+            onOpenChange={setIsAiOpen}
+          />
 
           {/* Shortcuts button */}
           <button

@@ -24,6 +24,7 @@ describe('every /api/admin route rejects anonymous requests', () => {
 
   it('finds the complete current admin route inventory', () => {
     expect(entries.map(([p]) => p).sort()).toEqual([
+      './ai/suggestions/route.ts',
       './api-keys/[id]/rotate/route.ts',
       './api-keys/[id]/route.ts',
       './authors/[slug]/route.ts',
