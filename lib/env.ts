@@ -139,6 +139,32 @@ const trustedOrigins = z
     }
   });
 
+const OPENROUTER_MODEL_ID = /^[a-z0-9][\w.-]*\/[\w.:-]+$/i;
+
+/** Comma-separated OpenRouter model ids, tried in order; empty means the built-in default. */
+const optionalOpenRouterModels = z.preprocess(
+  emptyToUndefined,
+  z
+    .string()
+    .transform((value) =>
+      value
+        .split(',')
+        .map((model) => model.trim())
+        .filter(Boolean),
+    )
+    .pipe(
+      z
+        .array(
+          z.string().regex(OPENROUTER_MODEL_ID, {
+            error: 'OPENROUTER_MODELS must list OpenRouter model ids, for example openrouter/free',
+          }),
+        )
+        .min(1)
+        .max(3, { error: 'OPENROUTER_MODELS accepts at most 3 model ids' }),
+    )
+    .optional(),
+);
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(3003),
@@ -155,6 +181,8 @@ const envSchema = z.object({
   S3_REGION: optionalString,
   S3_BUCKET_NAME: optionalString,
   S3_PUBLIC_URL: optionalS3PublicUrl,
+  OPENROUTER_API_KEY: optionalString,
+  OPENROUTER_MODELS: optionalOpenRouterModels,
   SOURCE_MONGODB_URI: optionalString,
   RELEASE_NOTES_DIR: optionalString,
 });

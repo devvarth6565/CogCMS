@@ -79,6 +79,22 @@ describe('parseEnv', () => {
     expect(env.S3_PUBLIC_URL).toBe('https://media.example.com');
     expect(env.SOURCE_MONGODB_URI).toBeUndefined();
   });
+
+  it('keeps the optional AI assistant off unless a key is set, and checks the model list', () => {
+    const off = parseEnv({ ...valid, OPENROUTER_API_KEY: ' ', OPENROUTER_MODELS: '' });
+    expect(off.OPENROUTER_API_KEY).toBeUndefined();
+    expect(off.OPENROUTER_MODELS).toBeUndefined();
+
+    const on = parseEnv({
+      ...valid,
+      OPENROUTER_API_KEY: ' sk-or-v1-local ',
+      OPENROUTER_MODELS: ' google/gemma-4-31b-it:free , openrouter/free ',
+    });
+    expect(on.OPENROUTER_API_KEY).toBe('sk-or-v1-local');
+    expect(on.OPENROUTER_MODELS).toEqual(['google/gemma-4-31b-it:free', 'openrouter/free']);
+    expect(() => parseEnv({ ...valid, OPENROUTER_MODELS: 'gpt 4' })).toThrow(/OPENROUTER_MODELS/);
+    expect(() => parseEnv({ ...valid, OPENROUTER_MODELS: 'a/1,b/2,c/3,d/4' })).toThrow(/at most 3/);
+  });
 });
 
 describe('parseTrustedOrigins', () => {

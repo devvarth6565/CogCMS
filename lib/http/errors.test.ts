@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
+  aiNotConfigured,
+  aiUnavailable,
   HttpError,
   noSiteSelected,
   notFound,
@@ -68,6 +70,22 @@ describe('toErrorResponse', () => {
       error: 'Too many requests',
       code: 'RATE_LIMITED',
       details: { retryAfter: 61.2 },
+    });
+  });
+
+  it('maps AI assistant failures without reusing the session statuses', async () => {
+    expect(await read(toErrorResponse(aiNotConfigured()))).toEqual({
+      status: 503,
+      json: {
+        error: 'AI suggestions are not configured on this installation',
+        code: 'AI_NOT_CONFIGURED',
+        details: null,
+      },
+    });
+    expect((await read(toErrorResponse(aiUnavailable('Try again.')))).status).toBe(502);
+    expect(await read(toErrorResponse(aiUnavailable('Too slow.', 504)))).toEqual({
+      status: 504,
+      json: { error: 'Too slow.', code: 'AI_UNAVAILABLE', details: null },
     });
   });
 
